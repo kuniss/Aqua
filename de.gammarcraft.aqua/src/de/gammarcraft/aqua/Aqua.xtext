@@ -1,0 +1,139 @@
+grammar de.gammarcraft.aqua.Aqua 
+	 with org.eclipse.xtext.xbase.Xbase
+
+generate aqua "http://www.gammarcraft.de/aqua/Aqua"
+
+import "http://www.eclipse.org/xtext/xbase/Xbase" as xbase
+
+AquaModel:
+	PackageDeclaration
+	importSection=XImportSection?
+	types+=Type*
+	;
+
+PackageDeclaration:
+  'package' name=QualifiedName 
+;
+
+
+Type:
+	UnitOrBoard | DataType
+;
+
+UnitOrBoard:
+	Unit | Board	
+;
+
+Board:
+	'board' name=ID 
+	ports+=PortDeclaration+
+	'{'
+		flows+=Flow*
+	'}'
+;
+
+PortDeclaration:
+	InputPort | OutputPort
+;
+
+InputPort:
+	'in' type=JvmTypeReference name=ID	
+;
+
+OutputPort:
+	(errorPort?='err'|'out') type=JvmTypeReference name=ID
+;
+
+Flow:
+	from=OutputPortReference '->' to=InputPortReference
+;
+
+OutputPortReference:
+	LocalInputPort | IntegratedPort
+;
+
+IntegratedPort:
+	unit=[UnitOrBoard] port=Port?
+;
+
+Port:
+	'.' name=ID	
+;
+
+LocalInputPort:
+	':' port=[InputPort]
+;
+
+InputPortReference:
+	LocalOutputPort | IntegratedPort | closure=XClosure
+;
+
+LocalOutputPort:
+	':' port=[OutputPort]
+;
+
+Unit:
+	'unit' name=ID
+	ports+=PortDeclaration+
+	'{'
+		declarations+=Declaration*
+	'}'
+;
+
+Declaration:
+	Constructor | InputProcessingDeclaration | MethodDeclaration | VariableDeclaration
+;
+
+Constructor:
+	'new' 
+	'('(params+=FullJvmFormalParameter (',' params+=FullJvmFormalParameter)*)? ')'
+	body=XBlockExpression
+;
+
+VariableDeclaration:
+	varDecl=XVariableDeclaration
+;
+
+InputProcessingDeclaration:
+	'on' inputPort=[InputPort] expr=XBlockExpression ('->' outputPort=LocalOutputPort)?
+;
+
+MethodDeclaration:
+	'def' type=JvmArgumentTypeReference name=ID 
+	'('(params+=FullJvmFormalParameter (',' params+=FullJvmFormalParameter)*)? ')'
+	body=XBlockExpression
+;
+
+
+// extension of the XBase' XExpression rule for output port forwarding
+XExpression returns xbase::XExpression :
+	XAssignment => ({OutputForwarding.expression=current} '->' outputPort=LocalOutputPort)?
+;
+
+// operation "->" removed from XBase' OpOther rule to get "->" available for output port forwarding
+OpOther:
+	  '..<'
+	| '>' '..'
+	| '..'
+	| '=>' 
+	| '>' (=>('>' '>') | '>') 
+	| '<' (=>('<' '<') | '<' | '=>')
+	| '<>'
+	| '?:';
+
+DataType:
+	'data' name=ID ('<' typeParameters+=JvmTypeParameter (',' typeParameters+=JvmTypeParameter)* '>')?  
+	   		("extends" extends=JvmParameterizedTypeReference)? 
+		   	('implements' implements+=JvmParameterizedTypeReference (',' implements+=JvmParameterizedTypeReference)*)?
+	'{'
+    	(members += Member)*
+	'}'
+;
+
+Member:
+	PropertyDeclaration | MethodDeclaration
+;
+
+PropertyDeclaration:
+	type=JvmTypeReference name=ID ('=' initialValue=XExpression)?
+;
